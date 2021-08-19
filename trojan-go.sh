@@ -1,5 +1,5 @@
 #!/bin/bash
-# MTProto一键安装脚本
+# trojan-go一键安装脚本
 # Author: hijk<https://hijk.art>
 
 
@@ -32,15 +32,20 @@ fi
 SITES=(
 http://www.zhuizishu.com/
 http://xs.56dyc.com/
-http://www.xiaoshuosk.com/
-https://www.quledu.net/
+#http://www.xiaoshuosk.com/
+#https://www.quledu.net/
 http://www.ddxsku.com/
 http://www.biqu6.com/
 https://www.wenshulou.cc/
-http://www.auutea.com/
+#http://www.auutea.com/
 http://www.55shuba.com/
 http://www.39shubao.com/
 https://www.23xsw.cc/
+#https://www.huanbige.com/
+https://www.jueshitangmen.info/
+https://www.zhetian.org/
+http://www.bequgexs.com/
+http://www.tjwl.com/
 )
 
 ZIP_FILE="trojan-go"
@@ -246,7 +251,7 @@ getData() {
         echo ""
         while true
         do
-            read -p " 请输入伪装路径，以/开头：" WSPATH
+            read -p " 请输入伪装路径，以/开头(不懂请直接回车)：" WSPATH
             if [[ -z "${WSPATH}" ]]; then
                 len=`shuf -i5-12 -n1`
                 ws=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $len | head -n 1`
@@ -269,11 +274,11 @@ getData() {
     echo "   1) 静态网站(位于/usr/share/nginx/html)"
     echo "   2) 小说站(随机选择)"
     echo "   3) 美女站(https://imeizi.me)"
-    echo "   4) VPS优惠博客(https://vpsgongyi.com)"
+    echo "   4) 高清壁纸站(https://bing.imeizi.me)"
     echo "   5) 自定义反代站点(需以http或者https开头)"
-    read -p "  请选择伪装网站类型[默认:美女站]" answer
+    read -p "  请选择伪装网站类型[默认:高清壁纸站]" answer
     if [[ -z "$answer" ]]; then
-        PROXY_URL="https://imeizi.me"
+        PROXY_URL="https://bing.imeizi.me"
     else
         case $answer in
         1)
@@ -299,7 +304,7 @@ getData() {
             PROXY_URL="https://imeizi.me"
             ;;
         4)
-            PROXY_URL="https://vpsgongyi.com"
+            PROXY_URL="https://bing.imeizi.me"
             ;;
         5)
             read -p " 请输入反代站点(以http或者https开头)：" PROXY_URL
@@ -347,9 +352,22 @@ installNginx() {
     colorEcho $BLUE " 安装nginx..."
     if [[ "$BT" = "false" ]]; then
         if [[ "$PMT" = "yum" ]]; then
-            $CMD_INSTALL epel-release 
+            $CMD_INSTALL epel-release
+            if [[ "$?" != "0" ]]; then
+                echo '[nginx-stable]
+name=nginx stable repo
+baseurl=http://nginx.org/packages/centos/$releasever/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true' > /etc/yum.repos.d/nginx.repo
+            fi
         fi
         $CMD_INSTALL nginx
+        if [[ "$?" != "0" ]]; then
+            colorEcho $RED " Nginx安装失败，请到 https://hijk.art 反馈"
+            exit 1
+        fi
         systemctl enable nginx
     else
         res=`which nginx 2>/dev/null`
@@ -403,13 +421,22 @@ getCert() {
             systemctl start cron
             systemctl enable cron
         fi
-        curl -sL https://get.acme.sh | sh
+        curl -sL https://get.acme.sh | sh -s email=hijk.pw@protonmail.ch
         source ~/.bashrc
         ~/.acme.sh/acme.sh  --upgrade  --auto-upgrade
-        ~/.acme.sh/acme.sh   --issue -d $DOMAIN   --standalone
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+        if [[ "$BT" = "false" ]]; then
+            ~/.acme.sh/acme.sh   --issue -d $DOMAIN --keylength ec-256 --pre-hook "systemctl stop nginx" --post-hook "systemctl restart nginx"  --standalone
+        else
+            ~/.acme.sh/acme.sh   --issue -d $DOMAIN --keylength ec-256 --pre-hook "nginx -s stop || { echo -n ''; }" --post-hook "nginx -c /www/server/nginx/conf/nginx.conf || { echo -n ''; }"  --standalone
+        fi
+        [[ -f ~/.acme.sh/${DOMAIN}_ecc/ca.cer ]] || {
+            colorEcho $RED " 获取证书失败，请复制上面的红色文字到 https://hijk.art 反馈"
+            exit 1
+        }
         CERT_FILE="/etc/trojan-go/${DOMAIN}.pem"
         KEY_FILE="/etc/trojan-go/${DOMAIN}.key"
-        ~/.acme.sh/acme.sh  --install-cert -d $DOMAIN \
+        ~/.acme.sh/acme.sh  --install-cert -d $DOMAIN --ecc \
             --key-file       $KEY_FILE  \
             --fullchain-file $CERT_FILE \
             --reloadcmd     "service nginx force-reload"
@@ -654,8 +681,6 @@ installBBR() {
     if [[ "$result" != "" ]]; then
         echo " BBR模块已安装"
         INSTALL_BBR=false
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-        echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
         return
     fi
     res=`hostnamectl | grep -i openvz`
@@ -667,7 +692,6 @@ installBBR() {
     
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
     sysctl -p
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
@@ -685,14 +709,12 @@ installBBR() {
             $CMD_REMOVE kernel-3.*
             grub2-set-default 0
             echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-            echo "3" > /proc/sys/net/ipv4/tcp_fastopen
             INSTALL_BBR=true
         fi
     else
         $CMD_INSTALL --install-recommends linux-generic-hwe-16.04
         grub-set-default 0
         echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
         INSTALL_BBR=true
     fi
 }
@@ -762,6 +784,12 @@ update() {
 }
 
 uninstall() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}trojan-go未安装，请先安装！${PLAIN}"
+        return
+    fi
+
     echo ""
     read -p " 确定卸载trojan-go？[y/n]：" answer
     if [[ "${answer,,}" = "y" ]]; then
@@ -874,7 +902,7 @@ showInfo() {
     echo -e " ${BLUE}trojan-go配置文件: ${PLAIN} ${RED}${CONFIG_FILE}${PLAIN}"
     echo -e " ${BLUE}trojan-go配置信息：${PLAIN}"
     echo -e "   IP：${RED}$IP${PLAIN}"
-    echo -e "   伪装域名/主机名(host)：${RED}$domain${PLAIN}"
+    echo -e "   伪装域名/主机名(host)/SNI/peer名称：${RED}$domain${PLAIN}"
     echo -e "   端口(port)：${RED}$port${PLAIN}"
     echo -e "   密码(password)：${RED}$password${PLAIN}"
     if [[ $ws = "true" ]]; then
@@ -910,14 +938,14 @@ menu() {
     echo -e "  ${GREEN}1.${PLAIN}  安装trojan-go"
     echo -e "  ${GREEN}2.${PLAIN}  安装trojan-go+WS"
     echo -e "  ${GREEN}3.${PLAIN}  更新trojan-go"
-    echo -e "  ${GREEN}4.${PLAIN}  卸载trojan-go"
+    echo -e "  ${GREEN}4.  ${RED}卸载trojan-go${PLAIN}"
     echo " -------------"
     echo -e "  ${GREEN}5.${PLAIN}  启动trojan-go"
     echo -e "  ${GREEN}6.${PLAIN}  重启trojan-go"
     echo -e "  ${GREEN}7.${PLAIN}  停止trojan-go"
     echo " -------------"
     echo -e "  ${GREEN}8.${PLAIN}  查看trojan-go配置"
-    echo -e "  ${GREEN}9.${PLAIN}  修改trojan-go配置"
+    echo -e "  ${GREEN}9.  ${RED}修改trojan-go配置${PLAIN}"
     echo -e "  ${GREEN}10.${PLAIN} 查看trojan-go日志"
     echo " -------------"
     echo -e "  ${GREEN}0.${PLAIN} 退出"
@@ -971,4 +999,14 @@ menu() {
 
 checkSystem
 
-menu
+action=$1
+[[ -z $1 ]] && action=menu
+case "$action" in
+    menu|update|uninstall|start|restart|stop|showInfo|showLog)
+        ${action}
+        ;;
+    *)
+        echo " 参数错误"
+        echo " 用法: `basename $0` [menu|update|uninstall|start|restart|stop|showInfo|showLog]"
+        ;;
+esac

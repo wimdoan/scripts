@@ -1,5 +1,5 @@
 #!/bin/bash
-# shadowsocks/ss CentOS8一键安装脚本
+# shadowsocks/ss CentOS一键安装脚本
 # Author: hijk<https://hijk.art>
 
 
@@ -224,6 +224,7 @@ installSS() {
 
     tag_url="${V6_PROXY}https://api.github.com/repos/shadowsocks/shadowsocks-libev/releases/latest"
     new_ver="$(normalizeVersion "$(curl -s "${tag_url}" --connect-timeout 10| grep 'tag_name' | cut -d\" -f4)")"
+    export PATH=/usr/local/bin:$PATH
     ssPath=`which ss-server`
     if [[ "$?" != "0" ]]; then
         installNewVer $new_ver
@@ -235,9 +236,6 @@ installSS() {
             colorEcho $YELLOW " 已安装最新版SS"
         fi
     fi
-
-    echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
 
     interface="0.0.0.0"
     if [[ "$V6_PROXY" != "" ]]; then

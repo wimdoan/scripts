@@ -30,15 +30,20 @@ fi
 SITES=(
 http://www.zhuizishu.com/
 http://xs.56dyc.com/
-http://www.xiaoshuosk.com/
-https://www.quledu.net/
+#http://www.xiaoshuosk.com/
+#https://www.quledu.net/
 http://www.ddxsku.com/
 http://www.biqu6.com/
 https://www.wenshulou.cc/
-http://www.auutea.com/
+#http://www.auutea.com/
 http://www.55shuba.com/
 http://www.39shubao.com/
 https://www.23xsw.cc/
+#https://www.huanbige.com/
+https://www.jueshitangmen.info/
+https://www.zhetian.org/
+http://www.bequgexs.com/
+http://www.tjwl.com/
 )
 
 CONFIG_FILE=/usr/local/etc/trojan/config.json
@@ -80,11 +85,11 @@ function checkSystem()
 }
 
 status() {
-    trojan_cmd="$(command -v trojan)"
-    if [[ "$trojan_cmd" = "" ]]; then
+    if [[ ! -f /usr/local/bin/trojan ]]; then
         echo 0
         return
     fi
+
     if [[ ! -f $CONFIG_FILE ]]; then
         echo 1
         return
@@ -174,11 +179,11 @@ function getData()
     echo "   1) 静态网站(位于/usr/share/nginx/html)"
     echo "   2) 小说站(随机选择)"
     echo "   3) 美女站(https://imeizi.me)"
-    echo "   4) VPS优惠博客(https://vpsgongyi.com)"
+    echo "   4) 高清壁纸站(https://bing.imeizi.me)"
     echo "   5) 自定义反代站点(需以http或者https开头)"
-    read -p "  请选择伪装网站类型[默认:美女站]" answer
+    read -p "  请选择伪装网站类型[默认:高清壁纸站]" answer
     if [[ -z "$answer" ]]; then
-        PROXY_URL="https://imeizi.me"
+        PROXY_URL="https://bing.imeizi.me"
     else
         case $answer in
         1)
@@ -194,7 +199,7 @@ function getData()
             PROXY_URL="https://imeizi.me"
             ;;
         4)
-            PROXY_URL="https://vpsgongyi.com"
+            PROXY_URL="https://bing.imeizi.me"
             ;;
         5)
             read -p " 请输入反代站点(以http或者https开头)：" PROXY_URL
@@ -392,7 +397,7 @@ EOF
 getCert() {
     mkdir -p /usr/local/etc/trojan
     if [[ -z ${CERT_FILE+x} ]]; then
-        systemctl stop nginx
+        stopNginx
         res=`netstat -ntlp| grep -E ':80 |:443 '`
         if [[ "${res}" != "" ]]; then
             colorEcho $RED " 其他进程占用了80或443端口，请先关闭再运行一键脚本"
@@ -411,13 +416,22 @@ getCert() {
             systemctl start cron
             systemctl enable cron
         fi
-        curl -sL https://get.acme.sh | sh
+        curl -sL https://get.acme.sh | sh -s email=hijk.pw@protonmail.ch
         source ~/.bashrc
         ~/.acme.sh/acme.sh  --upgrade  --auto-upgrade
-        ~/.acme.sh/acme.sh   --issue -d $DOMAIN   --standalone
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+        if [[ "$BT" = "false" ]]; then
+            ~/.acme.sh/acme.sh   --issue -d $DOMAIN --keylength ec-256 --pre-hook "systemctl stop nginx" --post-hook "systemctl restart nginx"  --standalone
+        else
+            ~/.acme.sh/acme.sh   --issue -d $DOMAIN --keylength ec-256 --pre-hook "nginx -s stop || { echo -n ''; }" --post-hook "nginx -c /www/server/nginx/conf/nginx.conf || { echo -n ''; }"  --standalone
+        fi
+        [[ -f ~/.acme.sh/${DOMAIN}_ecc/ca.cer ]] || {
+            colorEcho $RED " 获取证书失败，请复制上面的红色文字到 https://hijk.art 反馈"
+            exit 1
+        }
         CERT_FILE="/usr/local/etc/trojan/${DOMAIN}.pem"
         KEY_FILE="/usr/local/etc/trojan/${DOMAIN}.key"
-        ~/.acme.sh/acme.sh  --install-cert -d $DOMAIN \
+        ~/.acme.sh/acme.sh  --install-cert -d $DOMAIN --ecc \
             --key-file       $KEY_FILE  \
             --fullchain-file $CERT_FILE \
             --reloadcmd     "service nginx force-reload"
@@ -436,9 +450,22 @@ function installNginx()
     colorEcho $BLUE " 安装nginx..."
     if [[ "$BT" = "false" ]]; then
         if [[ "$PMT" = "yum" ]]; then
-            $CMD_INSTALL epel-release 
+            $CMD_INSTALL epel-release
+            if [[ "$?" != "0" ]]; then
+                echo '[nginx-stable]
+name=nginx stable repo
+baseurl=http://nginx.org/packages/centos/$releasever/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true' > /etc/yum.repos.d/nginx.repo
+            fi
         fi
         $CMD_INSTALL nginx
+        if [[ "$?" != "0" ]]; then
+            colorEcho $RED " Nginx安装失败，请到 https://hijk.art 反馈"
+            exit 1
+        fi
         systemctl enable nginx
     else
         res=`which nginx 2>/dev/null`
@@ -621,8 +648,6 @@ function installBBR()
     if [ "$result" != "" ]; then
         colorEcho $YELLOW " BBR模块已安装"
         INSTALL_BBR=false
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-        echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
         return;
     fi
     res=`hostnamectl | grep -i openvz`
@@ -634,7 +659,6 @@ function installBBR()
     
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
     sysctl -p
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
@@ -652,14 +676,12 @@ function installBBR()
             $CMD_REMOVE kernel-3.*
             grub2-set-default 0
             echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-            echo "3" > /proc/sys/net/ipv4/tcp_fastopen
             INSTALL_BBR=true
         fi
     else
         $CMD_INSTALL --install-recommends linux-generic-hwe-16.04
         grub-set-default 0
         echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
         INSTALL_BBR=true
     fi
 }
@@ -686,7 +708,8 @@ function showInfo()
     echo ""
     echo -e " ${BLUE}trojan配置文件：${PLAIN}${RED}$CONFIG_FILE${PLAIN}"
     echo -e " ${BLUE}trojan配置信息：${PLAIN}               "
-    echo -e "   ${BLUE}IP/域名(address):${PLAIN}  ${RED}${domain}${PLAIN}"
+    echo -e "   ${BLUE}IP/address：${PLAIN} ${RED}$IP${PLAIN}"
+    echo -e "   ${BLUE}域名/SNI/peer名称:${PLAIN}  ${RED}${domain}${PLAIN}"
     echo -e "   ${BLUE}端口(port)：${PLAIN}${RED}${port}${PLAIN}"
     echo -e "   ${BLUE}密码(password)：${PLAIN}${RED}$password${PLAIN}"
     echo  
@@ -799,6 +822,12 @@ showLog() {
 }
 
 function uninstall() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e "${RED}trojan未安装，请先安装！${PLAIN}"
+        return
+    fi
+
     echo ""
     read -p " 确定卸载trojan？(y/n)" answer
     [[ -z ${answer} ]] && answer="n"
@@ -845,14 +874,14 @@ menu() {
 
     echo -e "  ${GREEN}1.${PLAIN}  安装trojan"
     echo -e "  ${GREEN}2.${PLAIN}  更新trojan"
-    echo -e "  ${GREEN}3.${PLAIN}  卸载trojan"
+    echo -e "  ${GREEN}3.  ${RED}卸载trojan${PLAIN}"
     echo " -------------"
     echo -e "  ${GREEN}4.${PLAIN}  启动trojan"
     echo -e "  ${GREEN}5.${PLAIN}  重启trojan"
     echo -e "  ${GREEN}6.${PLAIN}  停止trojan"
     echo " -------------"
     echo -e "  ${GREEN}7.${PLAIN}  查看trojan配置"
-    echo -e "  ${GREEN}8.${PLAIN}  修改trojan配置"
+    echo -e "  ${GREEN}8.  ${RED}修改trojan配置${PLAIN}"
     echo -e "  ${GREEN}9.${PLAIN}  查看trojan日志"
     echo " -------------"
     echo -e "  ${GREEN}0.${PLAIN} 退出"
@@ -902,4 +931,14 @@ menu() {
 
 checkSystem
 
-menu
+action=$1
+[[ -z $1 ]] && action=menu
+case "$action" in
+    menu|install|update|uninstall|start|restart|stop|showInfo|showLog)
+        ${action}
+        ;;
+    *)
+        echo " 参数错误"
+        echo " 用法: `basename $0` [menu|install|update|uninstall|start|restart|stop|showInfo|showLog]"
+        ;;
+esac

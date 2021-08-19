@@ -67,6 +67,8 @@ Youtube频道：<https://www.youtube.com/channel/UCYTB--VsObzepVJtc9yvUxQ>
 
 ## V2Ray
 
+[V2rayN 4.12配置教程](https://v2raytech.com/v2rayn-4-12-config-tutorial/)
+
 [V2rayN配置教程](https://v2raytech.com/v2rayn-config-tutorial/)
 
 [V2rayW配置教程](https://v2raytech.com/v2rayw-config-tutorial/)
@@ -141,7 +143,7 @@ Youtube频道：<https://www.youtube.com/channel/UCYTB--VsObzepVJtc9yvUxQ>
 
 [Mac电脑连接Linux教程](https://v2raytech.com/mac-connect-to-linux-tutorial/)
 
-[vultr常见问题](hijk.pw/vultr-faq/)
+[vultr常见问题](https://v2raytech.com/vultr-faq/)
 
 [v2ray使用cloudflare中转流量，拯救被墙ip](https://v2raytech.com/use-cloudflare-unlock-blocked-ip/)
 

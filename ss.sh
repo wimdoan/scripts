@@ -59,6 +59,7 @@ checkSystem() {
 }
 
 status() {
+    export PATH=/usr/local/bin:$PATH
     cmd="$(command -v ss-server)"
     if [[ "$cmd" = "" ]]; then
         echo 0
@@ -294,6 +295,7 @@ installSS() {
 
     tag_url="${V6_PROXY}https://api.github.com/repos/shadowsocks/shadowsocks-libev/releases/latest"
     new_ver="$(normalizeVersion "$(curl -s "${tag_url}" --connect-timeout 10| grep 'tag_name' | cut -d\" -f4)")"
+    export PATH=/usr/local/bin:$PATH
     ssPath=`which ss-server 2>/dev/null`
     if [[ "$?" != "0" ]]; then
         [[ "$new_ver" != "" ]] || new_ver="3.3.5"
@@ -334,8 +336,6 @@ installBBR() {
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
         colorEcho $GREEN " BBR模块已安装"
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-        echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
         INSTALL_BBR=false
         return
     fi
@@ -348,7 +348,6 @@ installBBR() {
     
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
     sysctl -p
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
@@ -367,14 +366,12 @@ installBBR() {
             $CMD_REMOVE kernel-3.*
             grub2-set-default 0
             echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-            echo "3" > /proc/sys/net/ipv4/tcp_fastopen
             INSTALL_BBR=true
         fi
     else
         $CMD_INSTALL --install-recommends linux-generic-hwe-16.04
         grub-set-default 0
         echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
         INSTALL_BBR=true
     fi
 }
@@ -416,6 +413,12 @@ setFirewall() {
 }
 
 showInfo() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}SS未安装，请先安装！${PLAIN}"
+        return
+    fi
+
     port=`grep server_port $CONFIG_FILE | cut -d: -f2 | tr -d \",' '`
     res=`netstat -nltp | grep ${port} | grep 'ss-server'`
     [[ -z "$res" ]] && status="${RED}已停止${PLAIN}" || status="${GREEN}正在运行${PLAIN}"
@@ -440,6 +443,12 @@ showInfo() {
 }
 
 showQR() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}SS未安装，请先安装！${PLAIN}"
+        return
+    fi
+
     port=`grep server_port $CONFIG_FILE | cut -d: -f2 | tr -d \",' '`
     res=`netstat -nltp | grep ${port} | grep 'ss-server'`
     [[ -z "$res" ]] && status="${RED}已停止${PLAIN}" || status="${GREEN}正在运行${PLAIN}"
@@ -540,6 +549,12 @@ stop() {
 }
 
 uninstall() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}SS未安装，请先安装！${PLAIN}"
+        return
+    fi
+
     echo ""
     read -p " 确定卸载SS吗？(y/n)" answer
     [[ -z ${answer} ]] && answer="n"
@@ -557,6 +572,11 @@ uninstall() {
 }
 
 showLog() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}SS未安装，请先安装！${PLAIN}"
+        return
+    fi
     journalctl -xen --no-pager -u ${NAME}
 }
 
@@ -574,7 +594,7 @@ menu() {
 
     echo -e "  ${GREEN}1.${PLAIN}  安装SS"
     echo -e "  ${GREEN}2.${PLAIN}  更新SS"
-    echo -e "  ${GREEN}3.${PLAIN}  卸载SS"
+    echo -e "  ${GREEN}3.  ${RED}卸载SS${PLAIN}"
     echo " -------------"
     echo -e "  ${GREEN}4.${PLAIN}  启动SS"
     echo -e "  ${GREEN}5.${PLAIN}  重启SS"
@@ -582,7 +602,7 @@ menu() {
     echo " -------------"
     echo -e "  ${GREEN}7.${PLAIN}  查看SS配置"
     echo -e "  ${GREEN}8.${PLAIN}  查看配置二维码"
-    echo -e "  ${GREEN}9.${PLAIN}  修改SS配置"
+    echo -e "  ${GREEN}9.  ${RED}修改SS配置${PLAIN}"
     echo -e "  ${GREEN}10.${PLAIN} 查看SS日志"
     echo " -------------"
     echo -e "  ${GREEN}0.${PLAIN} 退出"
@@ -635,4 +655,14 @@ menu() {
 
 checkSystem
 
-menu
+action=$1
+[[ -z $1 ]] && action=menu
+case "$action" in
+    menu|install|update|uninstall|start|restart|stop|showInfo|showQR|showLog)
+        ${action}
+        ;;
+    *)
+        echo " 参数错误"
+        echo " 用法: `basename $0` [menu|install|update|uninstall|start|restart|stop|showInfo|showQR|showLog]"
+        ;;
+esac

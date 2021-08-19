@@ -222,6 +222,7 @@ installSS() {
 
     tag_url="${V6_PROXY}https://api.github.com/repos/shadowsocks/shadowsocks-libev/releases/latest"
     new_ver="$(normalizeVersion "$(curl -s "${tag_url}" --connect-timeout 10| grep 'tag_name' | cut -d\" -f4)")"
+    export PATH=/usr/local/bin:$PATH
     res=`which ss-server`
     if [ "$?" != "0" ]; then
         installNewVer $new_ver
@@ -233,10 +234,6 @@ installSS() {
             colorEcho $YELLOW " 已安装最新版SS"
         fi
     fi
-
-
-    echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
 
     interface="0.0.0.0"
     if [[ "$V6_PROXY" != "" ]]; then
@@ -299,8 +296,6 @@ installBBR() {
     if [ "$result" != "" ]; then
         colorEcho $BLUE " BBR模块已安装"
         INSTALL_BBR=false
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-        echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
         return;
     fi
 
@@ -313,7 +308,6 @@ installBBR() {
 
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
     sysctl -p
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
@@ -326,7 +320,6 @@ installBBR() {
     apt install -y --install-recommends linux-generic-hwe-16.04
     grub-set-default 0
     echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-    echo "3" > /proc/sys/net/ipv4/tcp_fastopen
     INSTALL_BBR=true
 }
 

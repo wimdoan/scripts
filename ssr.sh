@@ -1,5 +1,5 @@
 #!/bin/bash
-# shadowsocksR/SSR CentOS 7/8一键安装教程
+# shadowsocksR/SSR一键安装教程
 # Author: hijk<https://hijk.art>
 
 
@@ -415,8 +415,6 @@ installBBR() {
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
         colorEcho $GREEN " BBR模块已安装"
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-        echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
         INSTALL_BBR=false
         return
     fi
@@ -429,7 +427,6 @@ installBBR() {
     
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
     sysctl -p
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
@@ -447,19 +444,22 @@ installBBR() {
             $CMD_REMOVE kernel-3.*
             grub2-set-default 0
             echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-            echo "3" > /proc/sys/net/ipv4/tcp_fastopen
             INSTALL_BBR=true
         fi
     else
         $CMD_INSTALL --install-recommends linux-generic-hwe-16.04
         grub-set-default 0
         echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
         INSTALL_BBR=true
     fi
 }
 
 showInfo() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}SSR未安装，请先安装！${PLAIN}"
+        return
+    fi
     port=`grep server_port $CONFIG_FILE| cut -d: -f2 | tr -d \",' '`
     res=`netstat -nltp | grep ${port} | grep python`
     [[ -z "$res" ]] && status="${RED}已停止${PLAIN}" || status="${GREEN}正在运行${PLAIN}"
@@ -492,6 +492,11 @@ showInfo() {
 }
 
 showQR() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}SSR未安装，请先安装！${PLAIN}"
+        return
+    fi
     port=`grep server_port $CONFIG_FILE| cut -d: -f2 | tr -d \",' '`
     res=`netstat -nltp | grep ${port} | grep python`
     [[ -z "$res" ]] && status="${RED}已停止${PLAIN}" || status="${GREEN}正在运行${PLAIN}"
@@ -549,6 +554,12 @@ reconfig() {
 }
 
 uninstall() {
+    res=`status`
+    if [[ $res -lt 2 ]]; then
+        echo -e " ${RED}SSR未安装，请先安装！${PLAIN}"
+        return
+    fi
+
     echo ""
     read -p " 确定卸载SSR吗？(y/n)" answer
     [[ -z ${answer} ]] && answer="n"
@@ -617,7 +628,7 @@ menu() {
     echo ""
 
     echo -e "  ${GREEN}1.${PLAIN}  安装SSR"
-    echo -e "  ${GREEN}2.${PLAIN}  卸载SSR"
+    echo -e "  ${GREEN}2.  ${RED}卸载SSR${PLAIN}"
     echo " -------------"
     echo -e "  ${GREEN}4.${PLAIN}  启动SSR"
     echo -e "  ${GREEN}5.${PLAIN}  重启SSR"
@@ -625,7 +636,7 @@ menu() {
     echo " -------------"
     echo -e "  ${GREEN}7.${PLAIN}  查看SSR配置"
     echo -e "  ${GREEN}8.${PLAIN}  查看配置二维码"
-    echo -e "  ${GREEN}9.${PLAIN}  修改SSR配置"
+    echo -e "  ${GREEN}9.  ${RED}修改SSR配置${PLAIN}"
     echo -e "  ${GREEN}10.${PLAIN} 查看SSR日志"
     echo " -------------"
     echo -e "  ${GREEN}0.${PLAIN} 退出"
@@ -675,4 +686,15 @@ menu() {
 
 checkSystem
 
-menu
+action=$1
+[[ -z $1 ]] && action=menu
+case "$action" in
+    menu|install|uninstall|start|restart|stop|showInfo|showQR|showLog)
+        ${action}
+        ;;
+    *)
+        echo " 参数错误"
+        echo " 用法: `basename $0` [menu|install|uninstall|start|restart|stop|showInfo|showQR|showLog]"
+        ;;
+esac
+

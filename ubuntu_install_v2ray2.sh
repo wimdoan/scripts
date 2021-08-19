@@ -14,15 +14,20 @@ PLAIN='\033[0m'
 SITES=(
 http://www.zhuizishu.com/
 http://xs.56dyc.com/
-http://www.xiaoshuosk.com/
-https://www.quledu.net/
+#http://www.xiaoshuosk.com/
+#https://www.quledu.net/
 http://www.ddxsku.com/
 http://www.biqu6.com/
 https://www.wenshulou.cc/
-http://www.auutea.com/
+#http://www.auutea.com/
 http://www.55shuba.com/
 http://www.39shubao.com/
 https://www.23xsw.cc/
+#https://www.huanbige.com/
+https://www.jueshitangmen.info/
+https://www.zhetian.org/
+http://www.bequgexs.com/
+http://www.tjwl.com/
 )
 
 CONFIG_FILE="/etc/v2ray/config.json"
@@ -123,7 +128,7 @@ getData() {
     echo ""
     while true
     do
-        read -p " 请输入伪装路径，以/开头：" WSPATH
+        read -p " 请输入伪装路径，以/开头(不懂请直接回车)：" WSPATH
         if [[ -z "${WSPATH}" ]]; then
             len=`shuf -i5-12 -n1`
             ws=`cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $len | head -n 1`
@@ -153,11 +158,11 @@ getData() {
     echo "   1) 静态网站(位于/usr/share/nginx/html)"
     echo "   2) 小说站(随机选择)"
     echo "   3) 美女站(https://imeizi.me)"
-    echo "   4) VPS优惠博客(https://vpsgongyi.com)"
+    echo "   4) 高清壁纸站(https://bing.imeizi.me)"
     echo "   5) 自定义反代站点(需以http或者https开头)"
-    read -p "  请选择伪装网站类型[默认:美女站]" answer
+    read -p "  请选择伪装网站类型[默认:高清壁纸站]" answer
     if [[ -z "$answer" ]]; then
-        PROXY_URL="https://imeizi.me"
+        PROXY_URL="https://bing.imeizi.me"
     else
         case $answer in
         1)
@@ -183,7 +188,7 @@ getData() {
             PROXY_URL="https://imeizi.me"
             ;;
         4)
-            PROXY_URL="https://vpsgongyi.com"
+            PROXY_URL="https://bing.imeizi.me"
             ;;
         5)
             read -p " 请输入反代站点(以http或者https开头)：" PROXY_URL
@@ -292,13 +297,18 @@ getCert() {
         apt install -y socat openssl cron
         systemctl start cron
         systemctl enable cron
-        curl -sL https://get.acme.sh | sh
+        curl -sL https://get.acme.sh | sh -s email=hijk.pw@protonmail.ch
         source ~/.bashrc
         ~/.acme.sh/acme.sh  --upgrade  --auto-upgrade
-        ~/.acme.sh/acme.sh   --issue -d $DOMAIN   --standalone
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+        ~/.acme.sh/acme.sh   --issue -d $DOMAIN --keylength ec-256 --pre-hook "systemctl stop nginx" --post-hook "systemctl restart nginx"  --standalone
+        [[ -f ~/.acme.sh/${DOMAIN}_ecc/ca.cer ]] || {
+            colorEcho $RED " 获取证书失败，请复制上面的红色文字到 https://hijk.art 反馈"
+            exit 1
+        }
         CERT_FILE="/etc/v2ray/${DOMAIN}.pem"
         KEY_FILE="/etc/v2ray/${DOMAIN}.key"
-        ~/.acme.sh/acme.sh  --install-cert -d $DOMAIN \
+        ~/.acme.sh/acme.sh  --install-cert -d $DOMAIN --ecc \
             --key-file       $KEY_FILE  \
             --fullchain-file $CERT_FILE \
             --reloadcmd     "service nginx force-reload"
@@ -314,6 +324,11 @@ getCert() {
 
 installNginx() {
     apt install -y nginx
+    res=$(command -v nginx)
+    if [[ "$res" = "" ]]; then
+        colorEcho $RED " Nginx安装失败，请到 https://hijk.art 反馈"
+        exit 1
+    fi
     
     getCert
 
@@ -369,7 +384,7 @@ http {
 }
 EOF
 
-    mkdir -p /etc/nginx/conf.d;
+    mkdir -p /etc/nginx/conf.d
     cat > /etc/nginx/conf.d/${DOMAIN}.conf<<-EOF
 server {
     listen 80;
@@ -418,9 +433,7 @@ server {
     }
 }
 EOF
-    sed -i '/certbot/d' /etc/crontab
-    certbotpath=`which certbot`
-    echo "0 3 1 */2 0 root systemctl stop nginx; ${certbotpath} renew; systemctl restart nginx" >> /etc/crontab
+
     systemctl enable nginx && systemctl restart nginx
     systemctl start v2ray
     sleep 3
@@ -449,8 +462,6 @@ installBBR() {
     if [ "$result" != "" ]; then
         colorEcho $YELLOW " BBR模块已安装"
         INSTALL_BBR=false
-        echo "3" > /proc/sys/net/ipv4/tcp_fastopen
-        echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
         return;
     fi
     
@@ -463,7 +474,6 @@ installBBR() {
 
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
     sysctl -p
     result=$(lsmod | grep bbr)
     if [[ "$result" != "" ]]; then
@@ -476,7 +486,6 @@ installBBR() {
     apt install -y --install-recommends linux-generic-hwe-16.04
     grub-set-default 0
     echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-    echo "3" > /proc/sys/net/ipv4/tcp_fastopen
     INSTALL_BBR=true
 }
 
@@ -524,7 +533,7 @@ info() {
     echo -e " ${BLUE}v2ray运行状态：${PLAIN}${v2status}"
     echo -e " ${BLUE}v2ray配置文件：${PLAIN}${RED}$CONFIG_FILE${PLAIN}"
     echo -e " ${BLUE}nginx运行状态：${PLAIN}${ngstatus}"
-    echo -e " ${BLUE}nginx配置文件：${PLAIN}${RED}${confpath}${domain}.conf${PLAIN}"
+    echo -e " ${BLUE}nginx配置文件：${PLAIN}${RED}/etc/nginx/conf.d/${domain}.conf${PLAIN}"
     echo ""
     echo -e " ${RED}v2ray配置信息：${PLAIN}               "
     echo -e "  ${BLUE}IP(address):${PLAIN}  ${RED}${IP}${PLAIN}"
@@ -534,7 +543,7 @@ info() {
     echo -e "  ${BLUE}加密方式(security)：${PLAIN} ${RED}$security${PLAIN}"
     echo -e "  ${BLUE}传输协议(network)：${PLAIN} ${RED}${network}${PLAIN}" 
     echo -e "  ${BLUE}伪装类型(type)：${PLAIN}${RED}none${PLAIN}"
-    echo -e "  ${BLUE}伪装域名/主机名(host)：${PLAIN}${RED}${domain}${PLAIN}"
+    echo -e "  ${BLUE}伪装域名/主机名(host)/SNI/peer名称：${PLAIN}${RED}${domain}${PLAIN}"
     echo -e "  ${BLUE}路径(path)：${PLAIN}${RED}${path}${PLAIN}"
     echo -e "  ${BLUE}底层安全传输(tls)：${PLAIN}${RED}TLS${PLAIN}"
     echo  
